@@ -41,7 +41,7 @@
 
     <script>
         // 1. WebSocket接続 (Worker 2へ)
-        const ws = new WebSocket("wss://klcx-worker2.your-subdomain.workers.dev/ws");
+        const ws = new WebSocket("wss://center.kurea-ch124.workers.dev/ws");
 
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
