@@ -2,17 +2,65 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KLCX Terminal</title>
     <style>
         :root { --accent: #00ffcc; --bg: #0a0a0a; }
-        body { background: var(--bg); color: #fff; font-family: 'Courier New', monospace; transition: background 2s ease; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        body { 
+            background: var(--bg); 
+            color: #fff; 
+            font-family: 'Courier New', monospace; 
+            transition: background 2s ease; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            padding: 20px;
+            margin: 0;
+        }
         .monitor { width: 100%; max-width: 600px; }
-        .banner { font-size: 2.2rem; font-weight: bold; text-align: center; margin: 40px 0; min-height: 3rem; text-shadow: 0 0 12px var(--accent); }
-        .panel { background: rgba(26,26,26,0.9); padding: 20px; border: 1px solid #333; margin-bottom: 15px; border-radius: 4px; }
-        input { background: #000; border: 1px solid #444; color: var(--accent); padding: 12px; width: 100%; box-sizing: border-box; margin-top: 5px; outline: none; }
-        button { background: var(--accent); color: #000; border: none; padding: 15px; width: 100%; font-weight: bold; cursor: pointer; margin-top: 15px; transition: 0.2s; }
+        .banner { 
+            font-size: 2.2rem; 
+            font-weight: bold; 
+            text-align: center; 
+            margin: 40px 0; 
+            min-height: 3rem; 
+            text-shadow: 0 0 12px var(--accent); 
+        }
+        .panel { 
+            background: rgba(26, 26, 26, 0.9); 
+            padding: 20px; 
+            border: 1px solid #333; 
+            margin-bottom: 15px; 
+            border-radius: 4px; 
+        }
+        label { font-size: 0.7rem; color: #888; display: block; margin-bottom: 5px; }
+        input { 
+            background: #000; 
+            border: 1px solid #444; 
+            color: var(--accent); 
+            padding: 12px; 
+            width: 100%; 
+            box-sizing: border-box; 
+            outline: none;
+            font-family: inherit;
+        }
+        input:focus { border-color: var(--accent); }
+        button { 
+            background: var(--accent); 
+            color: #000; 
+            border: none; 
+            padding: 15px; 
+            width: 100%; 
+            font-weight: bold; 
+            cursor: pointer; 
+            margin-top: 15px; 
+            transition: 0.2s;
+            font-family: inherit;
+        }
+        button:hover { opacity: 0.8; }
         button:active { transform: scale(0.98); }
         .balance-val { font-size: 2.5rem; color: var(--accent); font-weight: bold; }
+        .status-tag { font-size: 0.6rem; background: #333; padding: 4px 8px; border-radius: 2px; }
     </style>
 </head>
 <body>
@@ -21,32 +69,73 @@
         <div id="displayMessage" class="banner">CONNECTING...</div>
 
         <div class="panel">
-            <label style="font-size: 0.7rem; color: #888;">TARGET WALLET (STORED LOCALLY)</label>
+            <label>TARGET WALLET (STORED LOCALLY)</label>
             <input type="text" id="targetAddress" placeholder="KLCX_..." oninput="syncAddr()">
         </div>
 
         <div class="panel" style="display: flex; justify-content: space-between; align-items: center;">
             <div>
-                <div style="font-size: 0.7rem; color: #888;">CURRENT BALANCE</div>
+                <label>CURRENT BALANCE</label>
                 <div class="balance-val"><span id="balanceDisp">0.0000</span> <small style="font-size: 1rem;">KLCX</small></div>
             </div>
-            <div id="statusTag" style="font-size: 0.6rem; background: #333; padding: 4px 8px;">SYNCING</div>
+            <div id="statusTag" class="status-tag">OFFLINE</div>
         </div>
 
         <div class="panel">
-            <label style="font-size: 0.7rem; color: #888;">PAY 10.0 KLCX FOR BANNER & COLOR</label>
-            <input type="text" id="msgInput" placeholder="YOUR MESSAGE">
+            <label>PAY 10.0 KLCX FOR BANNER & COLOR</label>
+            <input type="text" id="msgInput" placeholder="YOUR MESSAGE" style="margin-bottom: 10px;">
             <input type="password" id="passInput" placeholder="PASSWORD">
             <button onclick="sendPayment()">EXECUTE TRANSACTION</button>
         </div>
     </div>
 
     <script>
+        const banner = document.getElementById('displayMessage');
+        const statusTag = document.getElementById('statusTag');
+        const balanceDisp = document.getElementById('balanceDisp');
+
+        // 1. WebSocket 接続
         const ws = new WebSocket("wss://center.kurea-ch124.workers.dev/ws");
 
+        ws.onopen = () => {
+            console.log("WS Connected");
+            banner.innerText = "SYSTEM ONLINE";
+            statusTag.innerText = "LIVE";
+            statusTag.style.background = "#00ffcc";
+            statusTag.style.color = "#000";
+        };
+
+        ws.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            console.log("Broadcast received:", data);
+
+            // バナー文字と背景色の更新 (Style担当)
+            if (data.message) banner.innerText = data.message;
+            if (data.color) document.body.style.backgroundColor = data.color;
+
+            // 自分のアドレス宛のデータなら残高を即時更新
+            const currentAddr = document.getElementById('targetAddress').value.trim();
+            if (data.address === currentAddr && data.balance !== undefined) {
+                balanceDisp.innerText = data.balance.toFixed(4);
+            }
+        };
+
+        ws.onerror = (err) => {
+            banner.innerText = "WS ERROR";
+            statusTag.innerText = "ERR";
+            statusTag.style.background = "#ff0055";
+        };
+
+        ws.onclose = () => {
+            banner.innerText = "CONNECTION LOST";
+            statusTag.innerText = "RECONNECTING...";
+            setTimeout(() => location.reload(), 3000);
+        };
+
+        // 2. LocalStorage & 自動更新ロジック
         window.onload = () => {
             const saved = localStorage.getItem('klcx_addr');
-            if(saved) {
+            if (saved) {
                 document.getElementById('targetAddress').value = saved;
                 fetchLatest();
             }
@@ -54,63 +143,62 @@
 
         function syncAddr() {
             const addr = document.getElementById('targetAddress').value.trim();
-            if(addr.startsWith("KLCX_")) {
+            if (addr.startsWith("KLCX_")) {
                 localStorage.setItem('klcx_addr', addr);
                 fetchLatest();
             }
         }
 
-        // 5秒おきの「表」の自動更新
+        // 5秒ごとの定期残高チェック
         setInterval(fetchLatest, 5000);
 
         async function fetchLatest() {
             const addr = document.getElementById('targetAddress').value.trim();
-            if(!addr.startsWith("KLCX_")) return;
+            if (!addr.startsWith("KLCX_")) return;
             try {
                 const res = await fetch(`https://klcx.kurea-ch124.workers.dev/api/balance/${addr}`);
                 const data = await res.json();
-                if(data.success) {
-                    document.getElementById('balanceDisp').innerText = data.balance.toFixed(4);
-                    document.getElementById('statusTag').innerText = "LIVE";
+                if (data.success) {
+                    balanceDisp.innerText = data.balance.toFixed(4);
                 }
-            } catch(e) { document.getElementById('statusTag').innerText = "OFFLINE"; }
+            } catch (e) {
+                console.error("Fetch error");
+            }
         }
 
-        ws.onmessage = (e) => {
-            const data = JSON.parse(e.data);
-            if(data.message) document.getElementById('displayMessage').innerText = data.message;
-            if(data.color) document.body.style.backgroundColor = data.color;
-            
-            // 自分の残高が更新されたら即反映
-            const current = document.getElementById('targetAddress').value.trim();
-            if(data.address === current && data.balance !== undefined) {
-                document.getElementById('balanceDisp').innerText = data.balance.toFixed(4);
-            }
-        };
-
+        // 3. 支払い処理 (Worker 1 経由)
         async function sendPayment() {
             const addr = document.getElementById('targetAddress').value.trim();
             const pass = document.getElementById('passInput').value;
             const msg = document.getElementById('msgInput').value;
-            // 演出用の色はフロントでランダム生成
             const color = "#" + Math.floor(Math.random()*16777215).toString(16);
 
-            if(!addr || !pass) return alert("Missing Address or Password");
+            if (!addr || !pass) return alert("Address and Password required");
 
-            const res = await fetch("https://klcx.kurea-ch124.workers.dev/api/consume", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    addr: addr,
-                    pass: pass,
-                    amount: 10.0, // 単位はKLCX(Rust側で1億倍される)
-                    message: msg,
-                    color: color
-                })
-            });
-            const result = await res.json();
-            if(!result.success) alert("Failed: " + result.message);
-            else document.getElementById('passInput').value = ""; // 成功したらパス消す
+            try {
+                const res = await fetch("https://klcx.kurea-ch124.workers.dev/api/consume", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        addr: addr,      // Rust構造体の addr に一致
+                        pass: pass,      // 生パスワード
+                        amount: 10.0,    // KLCX単位
+                        message: msg,    // Worker 1 が演出用に使う
+                        color: color     // Worker 1 が演出用に使う
+                    })
+                });
+
+                const result = await res.json();
+                if (result.success) {
+                    document.getElementById('passInput').value = "";
+                    // 成功時は即座に残高反映を試みる
+                    fetchLatest();
+                } else {
+                    alert("Failed: " + result.message);
+                }
+            } catch (e) {
+                alert("Network Error");
+            }
         }
     </script>
 </body>
