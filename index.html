@@ -94,9 +94,8 @@
         const statusTag = document.getElementById('statusTag');
         const balanceDisp = document.getElementById('balanceDisp');
 
-        // 1. WebSocket 接続
-        // Worker 2ではなく、Worker 1に直接繋ぐ
-const ws = new WebSocket("wss://klcx.kurea-ch124.workers.dev/ws");
+        // WebSocket接続
+        const ws = new WebSocket("wss://klcx.kurea-ch124.workers.dev/ws");
 
         ws.onopen = () => {
             console.log("WS Connected");
@@ -107,17 +106,28 @@ const ws = new WebSocket("wss://klcx.kurea-ch124.workers.dev/ws");
         };
 
         ws.onmessage = (e) => {
-            const data = JSON.parse(e.data);
-            console.log("Broadcast received:", data);
+            try {
+                const data = JSON.parse(e.data);
+                console.log("Broadcast details:", data);
 
-            // バナー文字と背景色の更新 (Style担当)
-            if (data.message) banner.innerText = data.message;
-            if (data.color) document.body.style.backgroundColor = data.color;
+                // メッセージがあれば即反映 (message または msg どちらでも対応)
+                const newMsg = data.message || data.msg;
+                if (newMsg) {
+                    banner.innerText = newMsg;
+                }
 
-            // 自分のアドレス宛のデータなら残高を即時更新
-            const currentAddr = document.getElementById('targetAddress').value.trim();
-            if (data.address === currentAddr && data.balance !== undefined) {
-                balanceDisp.innerText = data.balance.toFixed(4);
+                // 背景色の更新
+                if (data.color) {
+                    document.body.style.backgroundColor = data.color;
+                }
+
+                // 残高の即時更新 (data.balance が数値か文字列か問わず対応)
+                const currentAddr = document.getElementById('targetAddress').value.trim();
+                if (data.address === currentAddr && data.balance !== undefined) {
+                    balanceDisp.innerText = parseFloat(data.balance).toFixed(4);
+                }
+            } catch (err) {
+                console.error("Message error:", err);
             }
         };
 
@@ -133,7 +143,7 @@ const ws = new WebSocket("wss://klcx.kurea-ch124.workers.dev/ws");
             setTimeout(() => location.reload(), 3000);
         };
 
-        // 2. LocalStorage & 自動更新ロジック
+        // LocalStorage同期
         window.onload = () => {
             const saved = localStorage.getItem('klcx_addr');
             if (saved) {
@@ -150,7 +160,6 @@ const ws = new WebSocket("wss://klcx.kurea-ch124.workers.dev/ws");
             }
         }
 
-        // 5秒ごとの定期残高チェック
         setInterval(fetchLatest, 5000);
 
         async function fetchLatest() {
@@ -158,41 +167,40 @@ const ws = new WebSocket("wss://klcx.kurea-ch124.workers.dev/ws");
             if (!addr.startsWith("KLCX_")) return;
             try {
                 const res = await fetch(`https://klcx.kurea-ch124.workers.dev/api/balance/${addr}`);
+                if (!res.ok) throw new Error();
                 const data = await res.json();
                 if (data.success) {
-                    balanceDisp.innerText = data.balance.toFixed(4);
+                    balanceDisp.innerText = parseFloat(data.balance).toFixed(4);
                 }
             } catch (e) {
-                console.error("Fetch error");
+                console.warn("Sync error");
             }
         }
 
-        // 3. 支払い処理 (Worker 1 経由)
         async function sendPayment() {
             const addr = document.getElementById('targetAddress').value.trim();
             const pass = document.getElementById('passInput').value;
             const msg = document.getElementById('msgInput').value;
             const color = "#" + Math.floor(Math.random()*16777215).toString(16);
 
-            if (!addr || !pass) return alert("Address and Password required");
+            if (!addr || !pass) return alert("Missing Info");
 
             try {
                 const res = await fetch("https://klcx.kurea-ch124.workers.dev/api/consume", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        addr: addr,      // Rust構造体の addr に一致
-                        pass: pass,      // 生パスワード
-                        amount: 10.0,    // KLCX単位
-                        message: msg,    // Worker 1 が演出用に使う
-                        color: color     // Worker 1 が演出用に使う
+                        addr: addr,
+                        pass: pass,
+                        amount: 10.0,
+                        message: msg,
+                        color: color
                     })
                 });
 
                 const result = await res.json();
                 if (result.success) {
                     document.getElementById('passInput').value = "";
-                    // 成功時は即座に残高反映を試みる
                     fetchLatest();
                 } else {
                     alert("Failed: " + result.message);
