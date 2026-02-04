@@ -81,23 +81,34 @@
 
         setInterval(fetchLatest, 5000);
 
-        async function sendPayment() {
-            const addr = document.getElementById('targetAddress').value.trim();
-            const pass = document.getElementById('passInput').value;
-            const msg = document.getElementById('msgInput').value;
-            const color = "#" + Math.floor(Math.random()*16777215).toString(16);
-            if (!addr || !pass) return alert("Missing Info");
+async function sendPayment() {
+    const addr = document.getElementById('targetAddress').value.trim();
+    const pass = document.getElementById('passInput').value;
+    const msg = document.getElementById('msgInput').value;
+    const color = "#" + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
 
-            try {
-                const res = await fetch("https://klcx.kurea-ch124.workers.dev/api/consume", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ addr, pass, amount: 10.0, message: msg, color: color })
-                });
-                const result = await res.json();
-                if (result.success) document.getElementById('passInput').value = "";
-                else alert("Failed: " + result.message);
-            } catch (e) { alert("Network Error"); }
+    try {
+        const res = await fetch("https://klcx.kurea-ch124.workers.dev/api/consume", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ addr, pass, amount: 10.0, message: msg, color: color })
+        });
+        
+        const result = await res.json();
+        if (result.success) {
+            // 本人へのレスポンスで即座に「WTF」を反映！
+            if (result.visualUpdate) {
+                document.getElementById('displayMessage').innerText = result.visualUpdate.message;
+                document.body.style.backgroundColor = result.visualUpdate.color;
+            }
+            document.getElementById('passInput').value = "";
+        } else {
+            alert("決済失敗: " + result.message);
+        }
+    } catch (e) {
+        alert("通信エラー (Workerが死んでいます): " + e.message);
+    }
+}
         }
     </script>
 </body>
