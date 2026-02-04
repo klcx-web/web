@@ -95,7 +95,8 @@
         const balanceDisp = document.getElementById('balanceDisp');
 
         // 1. WebSocket 接続
-        const ws = new WebSocket("wss://center.kurea-ch124.workers.dev/ws");
+        // Worker 2ではなく、Worker 1に直接繋ぐ
+const ws = new WebSocket("wss://klcx.kurea-ch124.workers.dev/ws");
 
         ws.onopen = () => {
             console.log("WS Connected");
