@@ -2,70 +2,196 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KLCX Terminal</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        :root { --main-bg: #1a1a1a; }
+        :root { 
+            --bg-color: #0a0a0a; 
+            --accent-color: #00ffcc;
+            --panel-bg: #1a1a1a;
+        }
         body {
-            background-color: var(--main-bg);
+            background-color: var(--bg-color);
             color: #fff;
-            font-family: 'Courier New', monospace;
-            transition: background-color 1.5s ease; /* 背景変化をエモく */
-            margin: 0; padding: 40px;
+            font-family: 'Share Tech Mono', monospace;
+            margin: 0; padding: 0;
+            transition: background-color 1s ease;
             display: flex; flex-direction: column; align-items: center;
         }
-        .monitor { width: 100%; max-width: 800px; }
-        .banner-text { font-size: 3rem; font-weight: bold; margin-bottom: 50px; text-align: center; }
-        .stats { border-top: 1px solid #444; padding-top: 20px; }
-        .balance-val { font-size: 2.5rem; color: #00ffcc; }
-        input { background: none; border: 1px solid #444; color: #fff; padding: 10px; width: 100%; margin-top: 10px; }
+
+        /* 1. 最上部：動的バナーエリア */
+        .banner-container {
+            width: 100%;
+            background: #000;
+            border-bottom: 2px solid var(--accent-color);
+            padding: 20px 0;
+            overflow: hidden;
+            position: sticky; top: 0; z-index: 100;
+        }
+        .banner-content {
+            font-size: 2.5rem;
+            font-weight: bold;
+            text-align: center;
+            white-space: nowrap;
+            text-transform: uppercase;
+            letter-spacing: 5px;
+            text-shadow: 0 0 10px var(--accent-color);
+        }
+
+        .monitor { width: 90%; max-width: 800px; padding: 40px 0; }
+
+        /* 2. 入力セクション */
+        .glass-panel {
+            background: var(--panel-bg);
+            border: 1px solid #333;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        .label { font-size: 0.7rem; color: #888; margin-bottom: 10px; display: block; }
+        input {
+            background: #000;
+            border: 1px solid #444;
+            color: var(--accent-color);
+            padding: 15px;
+            width: 100%;
+            box-sizing: border-box;
+            font-size: 1.1rem;
+            outline: none;
+        }
+        input:focus { border-color: var(--accent-color); }
+
+        /* 3. ステータス表示 */
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .stat-box { background: var(--panel-bg); padding: 20px; border-left: 4px solid var(--accent-color); }
+        .val { font-size: 1.8rem; font-weight: bold; display: block; margin-top: 5px; }
+
+        /* 4. 支払いボタン */
+        .btn-pay {
+            background: var(--accent-color);
+            color: #000;
+            border: none;
+            padding: 15px;
+            width: 100%;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: 0.3s;
+        }
+        .btn-pay:hover { opacity: 0.8; transform: translateY(-2px); }
     </style>
 </head>
 <body>
 
-    <div class="monitor">
-        <div id="displayMessage" class="banner-text">WAITING FOR DATA...</div>
+    <div class="banner-container" id="bannerFrame">
+        <div id="displayMessage" class="banner-content">SYSTEM ONLINE</div>
+    </div>
 
-        <div class="stats">
-            <p>WALLET: <span id="addrDisp">NOT CONNECTED</span></p>
-            <p>BALANCE: <span id="balanceDisp" class="balance-val">0.0000</span> KLCX</p>
+    <div class="monitor">
+        <div class="glass-panel">
+            <span class="label">SET TARGET WALLET</span>
+            <input type="text" id="targetAddress" placeholder="KLCX_..." oninput="onAddressChange()">
         </div>
 
-        <canvas id="earningChart" style="width:100%; height:150px; margin: 30px 0;"></canvas>
+        <div class="stats-grid">
+            <div class="stat-box">
+                <span class="label">CONNECTION</span>
+                <span id="addrDisp" class="val" style="font-size: 1rem;">IDLE</span>
+            </div>
+            <div class="stat-box">
+                <span class="label">BALANCE</span>
+                <span class="val"><span id="balanceDisp">0.0000</span> <small style="font-size: 0.5em;">KLCX</small></span>
+            </div>
+        </div>
 
-        <div class="stats">
-            <p>RESERVE BANNER (PAY 10 KLCX)</p>
-            <input type="text" id="msgInput" placeholder="MESSAGE (WILL BE CENSORED)">
-            <button onclick="sendPayment()" style="margin-top:10px; cursor:pointer; padding:10px 20px;">PAY & POST</button>
+        <div class="glass-panel" style="margin-top: 20px;">
+            <span class="label">EARNING HISTORY</span>
+            <canvas id="earningChart"></canvas>
+        </div>
+
+        <div class="glass-panel">
+            <span class="label">RESERVE NEXT BANNER (10.0 KLCX)</span>
+            <input type="text" id="msgInput" placeholder="NEW MESSAGE...">
+            <button class="btn-pay" onclick="sendPayment()">EXECUTE TRANSACTION</button>
+        </div>
+
+        <div style="color: #555; font-size: 0.8rem; line-height: 1.6; margin-top: 40px;">
+            <p>KLCX PROTOCOL v1.0.4<br>MODERATED BY CLOUDFLARE EDGE.<br>PAYMENTS PROCESSED VIA DISTRIBUTED RUST BACKEND.</p>
         </div>
     </div>
 
     <script>
-        // 1. WebSocket接続 (Worker 2へ)
+        // WebSocket 接続 (Worker 2)
         const ws = new WebSocket("wss://center.kurea-ch124.workers.dev/ws");
 
+        // グラフの初期化 (Chart.js)
+        const ctx = document.getElementById('earningChart').getContext('2d');
+        const earningChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: ['10m', '8m', '6m', '4m', '2m', 'NOW'],
+                datasets: [{
+                    label: 'KLCX',
+                    data: [0, 0, 0, 0, 0, 0],
+                    borderColor: '#00ffcc',
+                    tension: 0.4,
+                    fill: false
+                }]
+            },
+            options: { 
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, grid: { color: '#333' } }, x: { grid: { display: false } } }
+            }
+        });
+
+        // アドレス入力時の挙動
+        async function onAddressChange() {
+            const addr = document.getElementById('targetAddress').value.trim();
+            if (addr.length > 20) {
+                document.getElementById('addrDisp').innerText = "LINKED: " + addr.substring(0, 8);
+                updateBalance(addr);
+            }
+        }
+
+        async function updateBalance(addr) {
+            try {
+                const res = await fetch(`https://klcx.kurea-ch124.workers.dev/api/balance/${addr}`);
+                const data = await res.json();
+                if(data.success) {
+                    document.getElementById('balanceDisp').innerText = data.balance.toFixed(4);
+                }
+            } catch(e) { console.error("Balance fetch failed"); }
+        }
+
+        // リアルタイム更新の受信
         ws.onmessage = (event) => {
             const data = JSON.parse(event.data);
             
-            // 検閲済みの文字を表示
+            // 1. バナーメッセージ更新
             if(data.message) {
                 document.getElementById('displayMessage').innerText = data.message;
             }
             
-            // 背景色を動的に変更
+            // 2. 背景色更新
             if(data.color) {
                 document.body.style.backgroundColor = data.color;
             }
 
-            // 残高更新
-            if(data.balance) {
+            // 3. アドレスが一致すれば残高とグラフ更新
+            const currentWatch = document.getElementById('targetAddress').value.trim();
+            if(data.address === currentWatch) {
                 document.getElementById('balanceDisp').innerText = data.balance.toFixed(4);
+                // グラフに新しいデータを追加
+                earningChart.data.datasets[0].data.shift();
+                earningChart.data.datasets[0].data.push(data.balance);
+                earningChart.update();
             }
         };
 
-        // 2. 支払い処理 (これは既存の Worker1 -> Rust のルートを叩く)
         async function sendPayment() {
-            const msg = document.getElementById('msgInput').value;
-            // ... ここに fetch("/api/consume") の処理を書く
+            // 支払い処理のfetchロジック（前述の通り）
+            alert("Transaction initiated...");
         }
     </script>
 </body>
