@@ -2,77 +2,27 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KLCX Terminal</title>
     <style>
         :root { --accent: #00ffcc; --bg: #0a0a0a; }
-        body { 
-            background: var(--bg); 
-            color: #fff; 
-            font-family: 'Courier New', monospace; 
-            transition: background 2s ease; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            padding: 20px;
-            margin: 0;
-        }
+        body { background: var(--bg); color: #fff; font-family: 'Courier New', monospace; transition: background 2s ease; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
         .monitor { width: 100%; max-width: 600px; }
-        .banner { 
-            font-size: 2.2rem; 
-            font-weight: bold; 
-            text-align: center; 
-            margin: 40px 0; 
-            min-height: 3rem; 
-            text-shadow: 0 0 12px var(--accent); 
-        }
-        .panel { 
-            background: rgba(26, 26, 26, 0.9); 
-            padding: 20px; 
-            border: 1px solid #333; 
-            margin-bottom: 15px; 
-            border-radius: 4px; 
-        }
+        .banner { font-size: 2.2rem; font-weight: bold; text-align: center; margin: 40px 0; min-height: 3rem; text-shadow: 0 0 12px var(--accent); }
+        .panel { background: rgba(26,26,26,0.9); padding: 20px; border: 1px solid #333; margin-bottom: 15px; border-radius: 4px; }
         label { font-size: 0.7rem; color: #888; display: block; margin-bottom: 5px; }
-        input { 
-            background: #000; 
-            border: 1px solid #444; 
-            color: var(--accent); 
-            padding: 12px; 
-            width: 100%; 
-            box-sizing: border-box; 
-            outline: none;
-            font-family: inherit;
-        }
-        input:focus { border-color: var(--accent); }
-        button { 
-            background: var(--accent); 
-            color: #000; 
-            border: none; 
-            padding: 15px; 
-            width: 100%; 
-            font-weight: bold; 
-            cursor: pointer; 
-            margin-top: 15px; 
-            transition: 0.2s;
-            font-family: inherit;
-        }
-        button:hover { opacity: 0.8; }
-        button:active { transform: scale(0.98); }
+        input { background: #000; border: 1px solid #444; color: var(--accent); padding: 12px; width: 100%; box-sizing: border-box; outline: none; font-family: inherit; }
+        button { background: var(--accent); color: #000; border: none; padding: 15px; width: 100%; font-weight: bold; cursor: pointer; margin-top: 15px; font-family: inherit; }
         .balance-val { font-size: 2.5rem; color: var(--accent); font-weight: bold; }
         .status-tag { font-size: 0.6rem; background: #333; padding: 4px 8px; border-radius: 2px; }
     </style>
 </head>
 <body>
-
     <div class="monitor">
         <div id="displayMessage" class="banner">CONNECTING...</div>
-
         <div class="panel">
             <label>TARGET WALLET (STORED LOCALLY)</label>
             <input type="text" id="targetAddress" placeholder="KLCX_..." oninput="syncAddr()">
         </div>
-
         <div class="panel" style="display: flex; justify-content: space-between; align-items: center;">
             <div>
                 <label>CURRENT BALANCE</label>
@@ -80,7 +30,6 @@
             </div>
             <div id="statusTag" class="status-tag">OFFLINE</div>
         </div>
-
         <div class="panel">
             <label>PAY 10.0 KLCX FOR BANNER & COLOR</label>
             <input type="text" id="msgInput" placeholder="YOUR MESSAGE" style="margin-bottom: 10px;">
@@ -91,123 +40,64 @@
 
     <script>
         const banner = document.getElementById('displayMessage');
-        const statusTag = document.getElementById('statusTag');
         const balanceDisp = document.getElementById('balanceDisp');
+        const statusTag = document.getElementById('statusTag');
 
-        // WebSocket接続
+        // WebSocket 接続先を Worker 1 に統合
         const ws = new WebSocket("wss://klcx.kurea-ch124.workers.dev/ws");
 
         ws.onopen = () => {
-            console.log("WS Connected");
             banner.innerText = "SYSTEM ONLINE";
             statusTag.innerText = "LIVE";
             statusTag.style.background = "#00ffcc";
-            statusTag.style.color = "#000";
         };
 
         ws.onmessage = (e) => {
-            try {
-                const data = JSON.parse(e.data);
-                console.log("Broadcast details:", data);
-
-                // メッセージがあれば即反映 (message または msg どちらでも対応)
-                const newMsg = data.message || data.msg;
-                if (newMsg) {
-                    banner.innerText = newMsg;
-                }
-
-                // 背景色の更新
-                if (data.color) {
-                    document.body.style.backgroundColor = data.color;
-                }
-
-                // 残高の即時更新 (data.balance が数値か文字列か問わず対応)
-                const currentAddr = document.getElementById('targetAddress').value.trim();
-                if (data.address === currentAddr && data.balance !== undefined) {
-                    balanceDisp.innerText = parseFloat(data.balance).toFixed(4);
-                }
-            } catch (err) {
-                console.error("Message error:", err);
-            }
+            const data = JSON.parse(e.data);
+            console.log("Broadcast:", data);
+            if (data.message) banner.innerText = data.message;
+            if (data.color) document.body.style.backgroundColor = data.color;
+            if (data.balance !== undefined) balanceDisp.innerText = parseFloat(data.balance).toFixed(4);
         };
 
-        ws.onerror = (err) => {
-            banner.innerText = "WS ERROR";
-            statusTag.innerText = "ERR";
-            statusTag.style.background = "#ff0055";
-        };
-
-        ws.onclose = () => {
-            banner.innerText = "CONNECTION LOST";
-            statusTag.innerText = "RECONNECTING...";
-            setTimeout(() => location.reload(), 3000);
-        };
-
-        // LocalStorage同期
         window.onload = () => {
             const saved = localStorage.getItem('klcx_addr');
-            if (saved) {
-                document.getElementById('targetAddress').value = saved;
-                fetchLatest();
-            }
+            if (saved) { document.getElementById('targetAddress').value = saved; fetchLatest(); }
         };
 
         function syncAddr() {
             const addr = document.getElementById('targetAddress').value.trim();
-            if (addr.startsWith("KLCX_")) {
-                localStorage.setItem('klcx_addr', addr);
-                fetchLatest();
-            }
+            if (addr.startsWith("KLCX_")) { localStorage.setItem('klcx_addr', addr); fetchLatest(); }
         }
-
-        setInterval(fetchLatest, 5000);
 
         async function fetchLatest() {
             const addr = document.getElementById('targetAddress').value.trim();
-            if (!addr.startsWith("KLCX_")) return;
             try {
                 const res = await fetch(`https://klcx.kurea-ch124.workers.dev/api/balance/${addr}`);
-                if (!res.ok) throw new Error();
                 const data = await res.json();
-                if (data.success) {
-                    balanceDisp.innerText = parseFloat(data.balance).toFixed(4);
-                }
-            } catch (e) {
-                console.warn("Sync error");
-            }
+                if (data.success) balanceDisp.innerText = parseFloat(data.balance).toFixed(4);
+            } catch (e) { console.warn("Sync slow"); }
         }
+
+        setInterval(fetchLatest, 5000);
 
         async function sendPayment() {
             const addr = document.getElementById('targetAddress').value.trim();
             const pass = document.getElementById('passInput').value;
             const msg = document.getElementById('msgInput').value;
             const color = "#" + Math.floor(Math.random()*16777215).toString(16);
-
             if (!addr || !pass) return alert("Missing Info");
 
             try {
                 const res = await fetch("https://klcx.kurea-ch124.workers.dev/api/consume", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        addr: addr,
-                        pass: pass,
-                        amount: 10.0,
-                        message: msg,
-                        color: color
-                    })
+                    body: JSON.stringify({ addr, pass, amount: 10.0, message: msg, color: color })
                 });
-
                 const result = await res.json();
-                if (result.success) {
-                    document.getElementById('passInput').value = "";
-                    fetchLatest();
-                } else {
-                    alert("Failed: " + result.message);
-                }
-            } catch (e) {
-                alert("Network Error");
-            }
+                if (result.success) document.getElementById('passInput').value = "";
+                else alert("Failed: " + result.message);
+            } catch (e) { alert("Network Error"); }
         }
     </script>
 </body>
