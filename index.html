@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>KLCX Terminal</title>
+    <style>
+        :root { --main-bg: #1a1a1a; }
+        body {
+            background-color: var(--main-bg);
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            transition: background-color 1.5s ease; /* 背景変化をエモく */
+            margin: 0; padding: 40px;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .monitor { width: 100%; max-width: 800px; }
+        .banner-text { font-size: 3rem; font-weight: bold; margin-bottom: 50px; text-align: center; }
+        .stats { border-top: 1px solid #444; padding-top: 20px; }
+        .balance-val { font-size: 2.5rem; color: #00ffcc; }
+        input { background: none; border: 1px solid #444; color: #fff; padding: 10px; width: 100%; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="monitor">
+        <div id="displayMessage" class="banner-text">WAITING FOR DATA...</div>
+
+        <div class="stats">
+            <p>WALLET: <span id="addrDisp">NOT CONNECTED</span></p>
+            <p>BALANCE: <span id="balanceDisp" class="balance-val">0.0000</span> KLCX</p>
+        </div>
+
+        <canvas id="earningChart" style="width:100%; height:150px; margin: 30px 0;"></canvas>
+
+        <div class="stats">
+            <p>RESERVE BANNER (PAY 10 KLCX)</p>
+            <input type="text" id="msgInput" placeholder="MESSAGE (WILL BE CENSORED)">
+            <button onclick="sendPayment()" style="margin-top:10px; cursor:pointer; padding:10px 20px;">PAY & POST</button>
+        </div>
+    </div>
+
+    <script>
+        // 1. WebSocket接続 (Worker 2へ)
+        const ws = new WebSocket("wss://klcx-worker2.your-subdomain.workers.dev/ws");
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            // 検閲済みの文字を表示
+            if(data.message) {
+                document.getElementById('displayMessage').innerText = data.message;
+            }
+            
+            // 背景色を動的に変更
+            if(data.color) {
+                document.body.style.backgroundColor = data.color;
+            }
+
+            // 残高更新
+            if(data.balance) {
+                document.getElementById('balanceDisp').innerText = data.balance.toFixed(4);
+            }
+        };
+
+        // 2. 支払い処理 (これは既存の Worker1 -> Rust のルートを叩く)
+        async function sendPayment() {
+            const msg = document.getElementById('msgInput').value;
+            // ... ここに fetch("/api/consume") の処理を書く
+        }
+    </script>
+</body>
+</html>
